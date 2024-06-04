@@ -1,35 +1,35 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React from "react";
+import "./App.css";
+import Papa from "papaparse";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const changeHandler = (event) => {
+    Papa.parse(event.target.files[0], {
+      header: true,
+      skinEmptyLines: true,
+      complete: function (results) {
+        console.log(results.data);
+      }
 
+    });
+  };
   return (
-    <>
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <main className="flex items-center justify-center min-h-screen bg-black text-amber-400">
+      <div className="flex-col text-center">
+        <h1 className="mb-4 text-5xl font-serif">Upload CSV file</h1>
+        <div className="p-2">
+          <input
+            type="file"
+            name="file"
+            accept=".csv"
+            onChange={changeHandler}
+            className="p-2 bg-amber-400 text-black rounded"
+          />
+
+        </div>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    </main>
+  );
 }
 
-export default App
+export default App;
