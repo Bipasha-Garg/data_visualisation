@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Segmented Cone with D3.js</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            width: auto;
+            height: auto;
+            padding: 5px;
+            font: 12px sans-serif;
+            background: lightsteelblue;
+            border: 0;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column; /* Stack items vertically */
+            align-items: flex-start; /* Align items to the top */
+            position: fixed;
+            top: 80px; /* Adjust top spacing */
+            left: 20px; /* Adjust left spacing */
+            z-index: 999;
+        }
+
+        .button-container {
+            display: flex;
+            align-items: center;
+            padding-top: 20px;
+        }
+
+        .plusButton,
+        .minusButton {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-left: 10px; /* Adjust spacing between buttons */
+        }
+
+        /* Hover effect */
+        .plusButton:hover,
+        .minusButton:hover {
+            background-color: #45a049; /* Darker green */
+        }
+
+        label {
+            margin-right: 10px; /* Add some space between the label and the checkbox */
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="checkbox-container">
+            <label for="checkbox1">Exclude Empty Quadrants</label>
+            <input type="checkbox" id="checkbox1" name="option1">
+        </div>
+        <div class="button-container">
+            <button class="plusButton" onclick="increase()">+</button>
+            <button class="minusButton" onclick="decrease()">-</button>
+        </div>
+    </div>
+
+    <svg width="3000" height="3000"></svg>
+    <script>
+      const tooltip = d3.select("body").append("div")
+          .attr("class", "tooltip")
+          .style("opacity", 0);
+
+      document.addEventListener('DOMContentLoaded', (event) => {
+          const checkbox = document.getElementById('checkbox1');
+
+          checkbox.addEventListener('change', function() {
+              if (this.checked) {
+                  main_scaled(currentZoomValue);
+              } else {
+                  main(currentZoomValue);
+              }
+          });
+      });
+
+      let currentZoomValue = 100; // Initial value
+
+      function increase(){
+        if (currentZoomValue < 160){
+          currentZoomValue += 20;
+          const checkbox = document.getElementById('checkbox1');
+          if (checkbox.checked){
+            main_scaled(currentZoomValue);
+          }
+          else{
+            main(currentZoomValue);
+          }
+        }
+        console.log("click");
+      }
+
+      function decrease(){
+        if (currentZoomValue > 40){
+          currentZoomValue -= 20;
+          const checkbox = document.getElementById('checkbox1');
+          if (checkbox.checked){
+            main_scaled(currentZoomValue);
+          }
+          else{
+            main(currentZoomValue);
+          }
+        }
+        console.log("click");
+      }
+
+      async function fetchData() {
+          const response = await fetch('Iris.csv'); // Update with your actual CSV file path or URL
+          const data = await response.text();
+          return data;
+      }
+
+      function parseCSV(data) {
+          const lines = data.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+          const headers = lines[0].split(',').map(header => header.trim());
+          const dataRows = lines.slice(1);
+
+          const relevantColumns = headers.slice(1,5);
+          // const relevantColumns = ['SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm', 'PetalWidthCm'];
+          const indices = relevantColumns.map(col => headers.indexOf(col));
+
+          const parsedData = [];
+          dataRows.forEach((row, rowIndex) => {
+              const values = row.split(',').map(value => value.trim());
+              const oneRow = indices.map(index => parseFloat(values[index]));
+              parsedData.push(oneRow);
+          });
+
+          return parsedData;
+      }
+
+      function dotProduct(vector1, vector2) {
+          let result = 0;
+          for (let i = 0; i < vector1.length; i++) {
+              result += vector1[i] * vector2[i];
+          }
+          return result;
+      }
+
+      // Function to calculate the norm (magnitude) of a vector
+      function norm(vector) {
+          let sumOfSquares = 0;
+          for (let i = 0; i < vector.length; i++) {
+              sumOfSquares += vector[i] ** 2;
+          }
+          return Math.sqrt(sumOfSquares);
+      }
+
+      function classifyPoints(dimen, points, intervalLen, extra) {
+          // Calculate the mean of each dimension
+          const meanPt = new Array(dimen).fill(0);
+          for (let i = 0; i < points.length; i++) {
+              for (let j = 0; j < dimen; j++) {
+                  meanPt[j] += points[i][j];
+              }
+          }
+          for (let j = 0; j < dimen; j++) {
+              meanPt[j] /= points.length;
+          }
+
+          // Center the points around the origin
+          for (let i = 0; i < points.length; i++) {
+              for (let j = 0; j < dimen; j++) {
+                  points[i][j] -= meanPt[j];
+              }
+          }
+
+          // Calculate the range of each dimension and the maximum radius
+          const minPt = new Array(dimen).fill(Infinity);
+          const maxPt = new Array(dimen).fill(-Infinity);
+
+          for (let i = 0; i < points.length; i++) {
+              for (let j = 0; j < dimen; j++) {
+                  if (points[i][j] < minPt[j]) minPt[j] = points[i][j];
+                  if (points[i][j] > maxPt[j]) maxPt[j] = points[i][j];
+              }
+          }
+
+          console.log("minPt: ", minPt, "maxPt: ", maxPt);
+
+          const inter = maxPt.map((max, index) => max - minPt[index]);
+          console.log("inter: ", inter);
+          const rmax = Math.sqrt(inter.reduce((sum, value) => sum + value * value, 0));
+          console.log("rmax: ", rmax);
+          const bins = Math.max(1, Math.ceil(rmax / intervalLen) - extra); // Ensure bins is at least 1
+
+          // Initialize the bins
+          const distribution = Array.from({ length: bins }, () =>
+              Array.from({ length: 2 ** dimen }, () => [])
+          );
+
+          // Classify the points
+          for (let i = 0; i < points.length; i++) {
+              // Calculate the radius
+              const rad = Math.sqrt(points[i].reduce((sum, value) => sum + value * value, 0));
+              let index = Math.max(0, Math.ceil(rad / intervalLen) - 1); // Ensure index is not negative
+              console.log("myRad: ", rad);
+              // Determine the quadrant
+              let qnum = 0;
+              for (let j = 0; j < dimen; j++) {
+                  if (points[i][j] >= 0) {
+                      qnum = 2 * qnum;
+                  } else {
+                      qnum = 2 * qnum + 1;
+                  }
+              }
+
+              distribution[index][qnum].push(points[i]);
+          }
+
+          return [distribution, rmax];
+      }
+
+      // Define a function to convert decimal numbers to binary strings
+      function dec2bin(dec, bits) {
+          let bin = (dec >>> 0).toString(2); // Convert to binary string
+          const padding = bits - bin.length; // Calculate padding length
+          if (padding > 0) {
+              bin = "0".repeat(padding) + bin; // Add leading zeros if necessary
+          }
+          return bin;
+      }
+
+      function findEmptyStartIndex(bins) {
+          let startIndex = -1;
+          let foundNonEmpty = false;
+
+          for (let i = 0; i < bins.length; i++) {
+              let allEmpty = true;
+              for (let j = 0; j < bins[i].length; j++) {
+                  if (bins[i][j].length > 0) {
+                      allEmpty = false;
+                      foundNonEmpty = true;
+                      startIndex = i;
+                      break;
+                  }
+              }
+              if (!foundNonEmpty && allEmpty) {
+                  startIndex = i;
+              }
+          }
+
+          // If we found a non-empty bin before the end, move the start index to the next bin
+          if (startIndex !== -1 && foundNonEmpty) {
+              startIndex++;
+          }
+
+          return startIndex;
+      }
+
+      // Main function to fetch and classify the data
+      async function main_scaled(scaling_factor_circle) {
+        d3.select("svg").selectAll("*").remove(); // Clear the SVG
+        // const scaling_factor_circle = 100;
+        const scaling_factor = scaling_factor_circle / 2.5;
+
+        const csvData = await fetchData();
+        const Data = parseCSV(csvData);
+        console.log("Urgent: ", Data[0].length);
+        const dimen = Data[0].length;
+        const intervalLen = 0.5; // Adjust this as needed
+
+        const [tryBin, rmax] = classifyPoints(dimen, Data, intervalLen, 0);
+        const extra = tryBin.length - findEmptyStartIndex(tryBin); // Adjust this as needed
+
+        const [bins_old, redundant] = classifyPoints(dimen, Data, intervalLen, extra);
+        const pointRadius = 3
+
+        let bins = [];
+        for (let l=0; l<bins_old.length; l++){
+          bins.push([]);
+        }
+
+        let zero_num = 0;
+        for (let l=0; l<bins_old[0].length; l++){
+          zero_num = 0;
+          for (let m=0; m<bins_old.length; m++){
+            if (bins_old[m][l].length == 0){
+              zero_num += 1;
+            }
+          }
+
+          if (zero_num < bins_old.length){
+            for (let m=0; m<bins_old.length; m++){
+              bins[m].push(bins_old[m][l]);
+            }
+          }
+        }
+
+
+        console.log("Done: ", bins, "\nBins_Old: ", bins_old);
+
+        const svg = d3.select("svg"),
+            width = +svg.attr("width"),
+            height = +svg.attr("height");
+
+// CIRCLE PLOT THINGS
+        const numCircles = bins.length;
+        const circleColor = "black"; // Outline color
+        const strokeWidth = 0.3; // Stroke width
+        const centerX_Circle = bins.length * intervalLen * scaling_factor_circle + 100;
+        const centerY_Circle = bins.length * intervalLen * scaling_factor_circle + 100;
+
+        // const centerX_Circle = bins.length * intervalLen * scaling_factor_circle + 100;
+        // const centerY_Circle = bins.length * intervalLen * scaling_factor_circle * 4;
+        console.log("Urgent: ", bins);
+        let sectorAngles = [];
+        let tempAngle = 0;
+
+        const nonEmptyCount = bins.filter(bin => bin.length > 0).length;
+
+        for (let l = 0; l < bins[0].length; l++){
+          tempAngle = 0;
+          for (let m=0; m<bins.length; m++){
+            tempAngle += bins[m][l].length;
+          }
+
+          tempAngle = (tempAngle / Data.length) * (2 * Math.PI);
+          sectorAngles.push(tempAngle);
+          if (l > 0){
+            sectorAngles[l] += sectorAngles[l-1];
+          }
+        }
+
+        console.log("Done SectorAngles: ", sectorAngles);
+        // const totalPoints = bins.reduce((sum, bin) => sum + bin.length, 0);
+        // console.log("Urent: ", tempAngle);
+        const sectorAngle = (2 * Math.PI) / (2 ** dimen);
+        const binRadius = bins.length * intervalLen * scaling_factor_circle; // Calculate the outermost circle radius
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+// CIRCLE PLOT THINGS END
+
+        // const coneRadius = bins.length * intervalLen * scaling_factor;
+        const coneRadius = rmax * scaling_factor;
+        const coneHeight = coneRadius * 3;
+
+        const majorAxisScalingFactor = 1.3; // Increase this factor to increase the major axis length
+        const minorAxisScalingFactor = 0.5; // Adjust this factor to reduce the minor axis length
+
+        const coneMaxRadius = coneRadius * majorAxisScalingFactor;
+        const centerX = centerX_Circle + rmax * scaling_factor_circle + coneMaxRadius/2; // change here now
+        // console.log(centerY, "come", )
+        let centerY = centerY_Circle + coneHeight/10;
+        if (centerY < coneHeight / 2){
+          centerY = coneHeight / 2 + 100;
+          console.log("centerY: ", centerY);
+        }
+
+// CIRCLE PLOT THINGS START
+        // Draw concentric circles
+        svg.selectAll("circle")
+            // .data(d3.range(numCircles).map(d => ({ id: d, radius: (d + 1) * intervalLen * scaling_factor; console.log((d + 1) * intervalLen * scaling_factor) })))
+            .data(d3.range(numCircles).map(d => {
+                const radius = (d + 1) * intervalLen * scaling_factor_circle;
+                console.log("circle_radius: ", radius);
+                return { id: d, radius: radius };
+            }))
+            .enter()
+            .append("circle")
+            .attr("cx", centerX_Circle)
+            .attr("cy", centerY_Circle)
+            .attr("r", d => d.radius)
+            .style("fill", "none")
+            .style("stroke", circleColor)
+            .style("stroke-width", strokeWidth);
+
+        // Draw sector lines
+        for (let i = 0; i < bins[0].length; i++) {
+            const angle = sectorAngles[i];
+            const x2 = centerX_Circle + binRadius * Math.sin(angle);
+            const y2 = centerY_Circle - binRadius * Math.cos(angle);
+
+            svg.append("line")
+                .attr("x1", centerX_Circle)
+                .attr("y1", centerY_Circle)
+                .attr("x2", x2)
+                .attr("y2", y2)
+                .style("stroke", "black")
+                .style("stroke-width", strokeWidth);
+        }
+
+        // Draw scatter plot points
+        for (let i = 0; i < bins.length; i++) {
+            for (let j = 0; j < bins[i].length; j++) {
+              const distArray = bins[i][j];
+              if (distArray.length === 0) {
+                  continue;
+              }
+
+              // Calculate the reference vector based on the quadrant
+              let refVec = new Array(dimen).fill(0);
+              refVec[0] = 1; // Base dimension
+
+              // Determine the sign of components in refVec based on quadrant
+              let string = dec2bin(j, Math.log2(bins[i].length)); // Convert j to binary string
+              if (string[0] === '1') {
+                  refVec[0] = -1; // Change sign if necessary
+              }
+
+              // Draw scatter plot points with different colors
+              svg.selectAll(`circle-bin-${i}-${j}`)
+                  .data(distArray)
+                  .enter()
+                  .append("circle")
+                  .attr("class", `circle-bin-${i}-${j}`)
+                  .attr("cx", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+                      const rad2 = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0)));
+                      let theta = 0;
+                      if (j > 0){
+                        theta = sectorAngles[j] + (angle * ((2 * sectorAngles[j]) / Math.PI));
+                      }
+                      else{
+                        theta = sectorAngles[j] + (angle * ((2 * (sectorAngles[j] - sectorAngles[j-1])) / Math.PI));
+                      }
+                      console.log("rad: ", rad2, "->", rad, rad * Math.cos(theta));
+                      return centerX_Circle + rad * Math.cos(theta);
+                  })
+                  .attr("cy", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+                      const rad2 = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0)));
+                      let theta = 0;
+                      if (j > 0){
+                        theta = sectorAngles[j] + (angle * ((2 * sectorAngles[j]) / Math.PI));
+                      }
+                      else{
+                        theta = sectorAngles[j] + (angle * ((2 * (sectorAngles[j] - sectorAngles[j-1])) / Math.PI));
+                      }                      console.log("rad: ", rad2, "->", rad,  rad * Math.sin(theta));
+                      return centerY_Circle - rad * Math.sin(theta);
+                  })
+                  .attr("r", pointRadius) // Adjust the size of the points
+                  .style("fill", colorScale(`${i}`)) // Assign colors based on bin index
+                  .on("mouseover", function(event, d) {
+                        // Get transformed coordinates (cx, cy) of the point
+                        const cx = parseFloat(d3.select(this).attr("cx"));
+                        const cy = parseFloat(d3.select(this).attr("cy"));
+
+                        const dotP = dotProduct(d, refVec);
+                        const normP = norm(d) * norm(refVec);
+                        const angle = Math.acos(dotP / normP);
+                        const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+
+                        const innerRadius = Math.floor(rad / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                        const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                        const num_outer_circle = outerRadius / (intervalLen * scaling_factor_circle);
+                        console.log(`Point is in circle ${num_outer_circle}`);
+
+                        console.log(`Point (${d}) at (${cx}, ${cy}) is between circles with radii ${innerRadius} and ${outerRadius}`);
+
+                        // Show tooltip with rounded coordinates, transformed coordinates, bin, and quadrant information
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`Coordinates: (${cx.toFixed(2)}, ${cy.toFixed(2)})<br>Bin: ${i}<br>Quadrant: ${j}`)
+                            .style("left", (event.pageX + 5) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function(d) {
+                        // Hide tooltip on mouseout
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
+
+            }
+        }
+
+// CIRCLE PLOT THINGS END
+
+        const segments = bins.length;
+
+        // Arrays to store the sizes of the major and minor axes for each bin
+        const majorAxesSizes = [];
+        const minorAxesSizes = [];
+
+        // Function to draw a segment
+        function drawSegment(cx, cy, radius, minorRadius, index) {
+            // Store the axes sizes
+            majorAxesSizes[index] = radius * majorAxisScalingFactor * 2;
+            minorAxesSizes[index] = minorRadius * 2;
+
+            console.log(`Segment ${index}: cx=${cx.toFixed(2)}, cy=${cy}, rx=${radius * majorAxisScalingFactor}, ry=${minorRadius}`);
+            // Ellipse representing a cross-section
+            svg.append("ellipse")
+                .attr("cx", cx)
+                .attr("cy", cy)
+                .attr("rx", radius * majorAxisScalingFactor) // Apply major axis scaling factor
+                .attr("ry", minorRadius)
+                .attr("fill", "none")
+                .attr("stroke", "#000");
+
+            // Vertical lines for the segment sides
+            if (index < segments) {
+                const nextRadius = radius - (coneRadius / segments);
+                const nextMinorRadius = getMinorRadius(index + 1);
+                const nextY = cy + (coneHeight / segments);
+
+                svg.append("line")
+                    .attr("x1", cx - radius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y1", cy)
+                    .attr("x2", cx - nextRadius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y2", nextY)
+                    .attr("stroke", "#000");
+
+                svg.append("line")
+                    .attr("x1", cx + radius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y1", cy)
+                    .attr("x2", cx + nextRadius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y2", nextY)
+                    .attr("stroke", "#000");
+
+            }
+        }
+
+        // Function to calculate the minor radius of the ellipse at a given segment
+        function getMinorRadius(index) {
+            const heightAtIndex = (coneHeight / segments) * index;
+            const radiusAtHeight = (coneRadius / coneHeight) * (coneHeight - heightAtIndex);
+            return (radiusAtHeight / 2) * minorAxisScalingFactor;
+        }
+
+        // Draw the cone segments
+        for (let i = 0; i <= segments; i++) {
+            const radius = (coneRadius - (coneRadius / segments) * i);
+            const minorRadius = getMinorRadius(i);
+            const y = centerY - (coneHeight / 2) + (coneHeight / segments) * i;
+
+            drawSegment(centerX, y, radius, minorRadius, i);
+        }
+
+        // Draw scatter plot points
+        for (let i = 0; i < bins.length; i++) {
+          for (let j = 0; j < bins[i].length; j++) {
+              const distArray = bins[i][j];
+              if (distArray.length === 0) {
+                  continue;
+              }
+
+              // Calculate the reference vector based on the quadrant
+              let refVec = new Array(dimen).fill(0);
+              refVec[0] = 1; // Base dimension
+
+              // Determine the sign of components in refVec based on quadrant
+              let string = dec2bin(j, Math.log2(bins[i].length)); // Convert j to binary string
+              if (string[0] === '1') {
+                  refVec[0] = -1; // Change sign if necessary
+              }
+
+              console.log("majorAxesSizes: ", majorAxesSizes);
+
+              // Draw scatter plot points with different colors
+              svg.selectAll(`ellipse-bin-${i}-${j}`)
+                  .data(distArray)
+                  .enter()
+                  .append("circle")
+                  .attr("class", `ellipse-bin-${i}-${j}`)
+                  .attr("cx", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor;
+                      const rad_circle = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+                      const vertexX = centerX;
+                      const vertexY = centerY + (coneHeight / 2);
+                      const innerRadius = Math.floor(rad_circle / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                      const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                      const num_outer_circle = innerRadius / (intervalLen * scaling_factor_circle);
+
+                      const h_circle = centerX_Circle;
+                      const k_circle = centerY_Circle;
+                      const h_ellipse = vertexX;
+                      const k_ellipse = vertexY;
+                      const r = outerRadius;
+                      const a = majorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+                      const b = minorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+
+                      let theta = 0;
+                      if (j > 0){
+                        theta = sectorAngles[j] + (angle * ((2 * sectorAngles[j]) / Math.PI));
+                      }
+                      else{
+                        theta = sectorAngles[j] + (angle * ((2 * (sectorAngles[j] - sectorAngles[j-1])) / Math.PI));
+                      }
+
+                      // Function to transform points from circle to ellipse
+                      function transform_point(x, y) {
+                          const x_prime = x - h_circle;
+                          const y_prime = y - k_circle;
+                          const x_double_prime = (x_prime * a) / r;
+                          const y_double_prime = (y_prime * b) / r;
+                          const X = x_double_prime + h_ellipse;
+                          const Y = y_double_prime + k_ellipse;
+                          return [X, Y];
+                      }
+
+                      // Transform specific point from circle to ellipse
+                      const ellipse_point = transform_point(centerX_Circle + rad_circle * Math.cos(theta), centerY_Circle - rad_circle * Math.sin(theta));
+                      return ellipse_point[0];
+                  })
+                  .attr("cy", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor;
+                      let theta = 0;
+                      if (j > 0){
+                        theta = sectorAngles[j] + (angle * ((2 * sectorAngles[j]) / Math.PI));
+                      }
+                      else{
+                        theta = sectorAngles[j] + (angle * ((2 * (sectorAngles[j] - sectorAngles[j-1])) / Math.PI));
+                      }                      max_r = (bins.length * intervalLen * scaling_factor);
+                      const vertexX = centerX;
+                      const vertexY = centerY + (coneHeight / 2);
+
+                      const rad_circle = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+
+                      const innerRadius = Math.floor(rad_circle / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                      const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                      const num_outer_circle = innerRadius / (intervalLen * scaling_factor_circle);
+
+                      const h_circle = centerX_Circle;
+                      const k_circle = centerY_Circle;
+                      const h_ellipse = vertexX;
+                      const k_ellipse = vertexY;
+                      const r = outerRadius;
+                      const a = majorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+                      const b = minorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+
+                      // Function to transform points from circle to ellipse
+                      function transform_point(x, y) {
+                          const x_prime = x - h_circle;
+                          const y_prime = y - k_circle;
+                          const x_double_prime = (x_prime * a) / r;
+                          const y_double_prime = (y_prime * b) / r;
+                          const X = x_double_prime + h_ellipse;
+                          const Y = y_double_prime + k_ellipse;
+                          return [X, Y];
+                      }
+
+                      // Transform specific point from circle to ellipse
+                      const ellipse_point = transform_point(centerX_Circle + rad_circle * Math.cos(theta), centerY_Circle - rad_circle * Math.sin(theta));
+
+                      return ellipse_point[1] - ((coneHeight / max_r)*rad);
+                  })
+                  .attr("r", pointRadius) // Adjust the size of the points
+                  .style("fill", colorScale(`${i}`)) // Assign colors based on bin index
+                  .on("mouseover", function(event, d) {
+                        // Get transformed coordinates (cx, cy) of the point
+                        const cx = parseFloat(d3.select(this).attr("cx"));
+                        const cy = parseFloat(d3.select(this).attr("cy"));
+
+                        const dotP = dotProduct(d, refVec);
+                        const normP = norm(d) * norm(refVec);
+                        const angle = Math.acos(dotP / normP);
+                        const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+
+                        const innerRadius = Math.floor(rad / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                        const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                        const num_outer_circle = outerRadius / (intervalLen * scaling_factor_circle);
+                        console.log(`Point is in circle ${num_outer_circle}`);
+
+                        console.log(`Point (${d}) at (${cx}, ${cy}) is between circles with radii ${innerRadius} and ${outerRadius}`);
+
+                        // Show tooltip with rounded coordinates, transformed coordinates, bin, and quadrant information
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`Coordinates: (${d.map(coord => coord.toFixed(2)).join(', ')})<br>Transformed Coords: (${cx.toFixed(2)}, ${cy.toFixed(2)})<br>Bin: ${i}-${j}`)
+                            .style("left", (event.pageX + 5) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function(d) {
+                        // Hide tooltip on mouseout
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
+
+              }
+          }
+
+          // Legend
+          const legend = svg.append("g")
+            .attr("class", "legend")
+            .attr("transform", "translate(20, 20)");
+
+            legend.selectAll(".legend-item")
+                .data(d3.range(bins.length))
+                .enter()
+                .append("g")
+                .attr("class", "legend-item")
+                .attr("transform", (d, i) => "translate(" + i * 70 + ",20)");
+
+            legend.selectAll(".legend-item")
+                .append("rect")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", 10)
+                .attr("height", 10)
+                .style("fill", d => colorScale(d));
+
+            legend.selectAll(".legend-item")
+                .append("text")
+                .attr("x", 20)
+                .attr("y", 5)
+                .attr("dy", ".35em")
+                .style("text-anchor", "start")
+                .text(d => `Bin ${d}`);
+
+      }
+
+
+      // Main function to fetch and classify the data
+      async function main(scaling_factor_circle) {
+        d3.select("svg").selectAll("*").remove(); // Clear the SVG
+        // const scaling_factor_circle = 100;
+        const scaling_factor = scaling_factor_circle / 2.5;
+
+        const csvData = await fetchData();
+        const Data = parseCSV(csvData);
+        console.log("Urgent: ", Data[0].length);
+        const dimen = 4;
+        const intervalLen = 0.5; // Adjust this as needed
+
+        const [tryBin, rmax] = classifyPoints(dimen, Data, intervalLen, 0);
+        const extra = tryBin.length - findEmptyStartIndex(tryBin); // Adjust this as needed
+
+        const [bins, redundant] = classifyPoints(dimen, Data, intervalLen, extra);
+        const pointRadius = 3
+
+        const svg = d3.select("svg"),
+            width = +svg.attr("width"),
+            height = +svg.attr("height");
+
+// CIRCLE PLOT THINGS
+        const numCircles = bins.length;
+        const circleColor = "black"; // Outline color
+        const strokeWidth = 0.3; // Stroke width
+        const centerX_Circle = bins.length * intervalLen * scaling_factor_circle + 100;
+        const centerY_Circle = bins.length * intervalLen * scaling_factor_circle + 100;
+
+        // const centerX_Circle = bins.length * intervalLen * scaling_factor_circle + 100;
+        // const centerY_Circle = bins.length * intervalLen * scaling_factor_circle * 4;
+        console.log("Urgent: ", centerX_Circle, centerY_Circle);
+        const sectorAngle = (2 * Math.PI) / (2 ** dimen);
+        const binRadius = bins.length * intervalLen * scaling_factor_circle; // Calculate the outermost circle radius
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+// CIRCLE PLOT THINGS END
+
+        // const coneRadius = bins.length * intervalLen * scaling_factor;
+        const coneRadius = rmax * scaling_factor;
+        const coneHeight = coneRadius * 3;
+
+        const majorAxisScalingFactor = 1.3; // Increase this factor to increase the major axis length
+        const minorAxisScalingFactor = 0.5; // Adjust this factor to reduce the minor axis length
+
+        const coneMaxRadius = coneRadius * majorAxisScalingFactor;
+        const centerX = centerX_Circle + rmax * scaling_factor_circle + coneMaxRadius/2; // change here now
+        // console.log(centerY, "come", )
+        let centerY = centerY_Circle + coneHeight/10;
+        if (centerY < coneHeight / 2){
+          centerY = coneHeight / 2 + 100;
+          console.log("centerY: ", centerY);
+        }
+
+// CIRCLE PLOT THINGS START
+        // Draw concentric circles
+        svg.selectAll("circle")
+            // .data(d3.range(numCircles).map(d => ({ id: d, radius: (d + 1) * intervalLen * scaling_factor; console.log((d + 1) * intervalLen * scaling_factor) })))
+            .data(d3.range(numCircles).map(d => {
+                const radius = (d + 1) * intervalLen * scaling_factor_circle;
+                console.log("circle_radius: ", radius);
+                return { id: d, radius: radius };
+            }))
+            .enter()
+            .append("circle")
+            .attr("cx", centerX_Circle)
+            .attr("cy", centerY_Circle)
+            .attr("r", d => d.radius)
+            .style("fill", "none")
+            .style("stroke", circleColor)
+            .style("stroke-width", strokeWidth);
+
+        // Draw sector lines
+        for (let i = 0; i < 2 ** dimen; i++) {
+            const angle = i * sectorAngle;
+            const x2 = centerX_Circle + binRadius * Math.sin(angle);
+            const y2 = centerY_Circle - binRadius * Math.cos(angle);
+
+            svg.append("line")
+                .attr("x1", centerX_Circle)
+                .attr("y1", centerY_Circle)
+                .attr("x2", x2)
+                .attr("y2", y2)
+                .style("stroke", "black")
+                .style("stroke-width", strokeWidth);
+        }
+
+        // Draw scatter plot points
+        for (let i = 0; i < bins.length; i++) {
+            for (let j = 0; j < bins[i].length; j++) {
+              const distArray = bins[i][j];
+              if (distArray.length === 0) {
+                  continue;
+              }
+
+              // Calculate the reference vector based on the quadrant
+              let refVec = new Array(dimen).fill(0);
+              refVec[0] = 1; // Base dimension
+
+              // Determine the sign of components in refVec based on quadrant
+              let string = dec2bin(j, Math.log2(bins[i].length)); // Convert j to binary string
+              if (string[0] === '1') {
+                  refVec[0] = -1; // Change sign if necessary
+              }
+
+              // Draw scatter plot points with different colors
+              svg.selectAll(`circle-bin-${i}-${j}`)
+                  .data(distArray)
+                  .enter()
+                  .append("circle")
+                  .attr("class", `circle-bin-${i}-${j}`)
+                  .attr("cx", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+                      const rad2 = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0)));
+                      const theta = j * sectorAngle + (angle * ((2 * sectorAngle) / Math.PI));
+                      console.log("rad: ", rad2, "->", rad, rad * Math.cos(theta));
+                      return centerX_Circle + rad * Math.cos(theta);
+                  })
+                  .attr("cy", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+                      const rad2 = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0)));
+                      const theta = j * sectorAngle + (angle * ((2 * sectorAngle) / Math.PI));
+                      console.log("rad: ", rad2, "->", rad,  rad * Math.sin(theta));
+                      return centerY_Circle - rad * Math.sin(theta);
+                  })
+                  .attr("r", pointRadius) // Adjust the size of the points
+                  .style("fill", colorScale(`${i}`)) // Assign colors based on bin index
+                  .on("mouseover", function(event, d) {
+                        // Get transformed coordinates (cx, cy) of the point
+                        const cx = parseFloat(d3.select(this).attr("cx"));
+                        const cy = parseFloat(d3.select(this).attr("cy"));
+
+                        const dotP = dotProduct(d, refVec);
+                        const normP = norm(d) * norm(refVec);
+                        const angle = Math.acos(dotP / normP);
+                        const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+
+                        const innerRadius = Math.floor(rad / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                        const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                        const num_outer_circle = outerRadius / (intervalLen * scaling_factor_circle);
+                        console.log(`Point is in circle ${num_outer_circle}`);
+
+                        console.log(`Point (${d}) at (${cx}, ${cy}) is between circles with radii ${innerRadius} and ${outerRadius}`);
+
+                        // Show tooltip with rounded coordinates, transformed coordinates, bin, and quadrant information
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`Coordinates: (${cx.toFixed(2)}, ${cy.toFixed(2)})<br>Bin: ${i}<br>Quadrant: ${j}`)
+                            .style("left", (event.pageX + 5) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function(d) {
+                        // Hide tooltip on mouseout
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
+
+            }
+        }
+
+// CIRCLE PLOT THINGS END
+
+        const segments = bins.length;
+
+        // Arrays to store the sizes of the major and minor axes for each bin
+        const majorAxesSizes = [];
+        const minorAxesSizes = [];
+
+        // Function to draw a segment
+        function drawSegment(cx, cy, radius, minorRadius, index) {
+            // Store the axes sizes
+            majorAxesSizes[index] = radius * majorAxisScalingFactor * 2;
+            minorAxesSizes[index] = minorRadius * 2;
+
+            console.log(`Segment ${index}: cx=${cx.toFixed(2)}, cy=${cy}, rx=${radius * majorAxisScalingFactor}, ry=${minorRadius}`);
+            // Ellipse representing a cross-section
+            svg.append("ellipse")
+                .attr("cx", cx)
+                .attr("cy", cy)
+                .attr("rx", radius * majorAxisScalingFactor) // Apply major axis scaling factor
+                .attr("ry", minorRadius)
+                .attr("fill", "none")
+                .attr("stroke", "#000");
+
+            // Vertical lines for the segment sides
+            if (index < segments) {
+                const nextRadius = radius - (coneRadius / segments);
+                const nextMinorRadius = getMinorRadius(index + 1);
+                const nextY = cy + (coneHeight / segments);
+
+                svg.append("line")
+                    .attr("x1", cx - radius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y1", cy)
+                    .attr("x2", cx - nextRadius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y2", nextY)
+                    .attr("stroke", "#000");
+
+                svg.append("line")
+                    .attr("x1", cx + radius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y1", cy)
+                    .attr("x2", cx + nextRadius * majorAxisScalingFactor) // Apply major axis scaling factor
+                    .attr("y2", nextY)
+                    .attr("stroke", "#000");
+
+            }
+        }
+
+        // Function to calculate the minor radius of the ellipse at a given segment
+        function getMinorRadius(index) {
+            const heightAtIndex = (coneHeight / segments) * index;
+            const radiusAtHeight = (coneRadius / coneHeight) * (coneHeight - heightAtIndex);
+            return (radiusAtHeight / 2) * minorAxisScalingFactor;
+        }
+
+        // Draw the cone segments
+        for (let i = 0; i <= segments; i++) {
+            const radius = (coneRadius - (coneRadius / segments) * i);
+            const minorRadius = getMinorRadius(i);
+            const y = centerY - (coneHeight / 2) + (coneHeight / segments) * i;
+
+            drawSegment(centerX, y, radius, minorRadius, i);
+        }
+
+        // Draw scatter plot points
+        for (let i = 0; i < bins.length; i++) {
+          for (let j = 0; j < bins[i].length; j++) {
+              const distArray = bins[i][j];
+              if (distArray.length === 0) {
+                  continue;
+              }
+
+              // Calculate the reference vector based on the quadrant
+              let refVec = new Array(dimen).fill(0);
+              refVec[0] = 1; // Base dimension
+
+              // Determine the sign of components in refVec based on quadrant
+              let string = dec2bin(j, Math.log2(bins[i].length)); // Convert j to binary string
+              if (string[0] === '1') {
+                  refVec[0] = -1; // Change sign if necessary
+              }
+
+              console.log("majorAxesSizes: ", majorAxesSizes);
+
+              // Draw scatter plot points with different colors
+              svg.selectAll(`ellipse-bin-${i}-${j}`)
+                  .data(distArray)
+                  .enter()
+                  .append("circle")
+                  .attr("class", `ellipse-bin-${i}-${j}`)
+                  .attr("cx", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor;
+                      const rad_circle = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+                      const vertexX = centerX;
+                      const vertexY = centerY + (coneHeight / 2);
+                      const innerRadius = Math.floor(rad_circle / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                      const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                      const num_outer_circle = innerRadius / (intervalLen * scaling_factor_circle);
+
+                      const h_circle = centerX_Circle;
+                      const k_circle = centerY_Circle;
+                      const h_ellipse = vertexX;
+                      const k_ellipse = vertexY;
+                      const r = outerRadius;
+                      const a = majorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+                      const b = minorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+
+                      const theta = j * sectorAngle + (angle * ((2 * sectorAngle) / Math.PI))
+
+                      // Function to transform points from circle to ellipse
+                      function transform_point(x, y) {
+                          const x_prime = x - h_circle;
+                          const y_prime = y - k_circle;
+                          const x_double_prime = (x_prime * a) / r;
+                          const y_double_prime = (y_prime * b) / r;
+                          const X = x_double_prime + h_ellipse;
+                          const Y = y_double_prime + k_ellipse;
+                          return [X, Y];
+                      }
+
+                      // Transform specific point from circle to ellipse
+                      const ellipse_point = transform_point(centerX_Circle + rad_circle * Math.cos(theta), centerY_Circle - rad_circle * Math.sin(theta));
+                      return ellipse_point[0];
+                  })
+                  .attr("cy", d => {
+                      const dotP = dotProduct(d, refVec);
+                      const normP = norm(d) * norm(refVec);
+                      const angle = Math.acos(dotP / normP);
+                      const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor;
+                      const theta = j * sectorAngle + (angle * ((2 * sectorAngle) / Math.PI));
+                      max_r = (bins.length * intervalLen * scaling_factor);
+                      const vertexX = centerX;
+                      const vertexY = centerY + (coneHeight / 2);
+
+                      const rad_circle = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+
+                      const innerRadius = Math.floor(rad_circle / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                      const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                      const num_outer_circle = innerRadius / (intervalLen * scaling_factor_circle);
+
+                      const h_circle = centerX_Circle;
+                      const k_circle = centerY_Circle;
+                      const h_ellipse = vertexX;
+                      const k_ellipse = vertexY;
+                      const r = outerRadius;
+                      const a = majorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+                      const b = minorAxesSizes[majorAxesSizes.length - num_outer_circle - 1]/2;
+
+                      // Function to transform points from circle to ellipse
+                      function transform_point(x, y) {
+                          const x_prime = x - h_circle;
+                          const y_prime = y - k_circle;
+                          const x_double_prime = (x_prime * a) / r;
+                          const y_double_prime = (y_prime * b) / r;
+                          const X = x_double_prime + h_ellipse;
+                          const Y = y_double_prime + k_ellipse;
+                          return [X, Y];
+                      }
+
+                      // Transform specific point from circle to ellipse
+                      const ellipse_point = transform_point(centerX_Circle + rad_circle * Math.cos(theta), centerY_Circle - rad_circle * Math.sin(theta));
+
+                      return ellipse_point[1] - ((coneHeight / max_r)*rad);
+                  })
+                  .attr("r", pointRadius) // Adjust the size of the points
+                  .style("fill", colorScale(`${i}`)) // Assign colors based on bin index
+                  .on("mouseover", function(event, d) {
+                        // Get transformed coordinates (cx, cy) of the point
+                        const cx = parseFloat(d3.select(this).attr("cx"));
+                        const cy = parseFloat(d3.select(this).attr("cy"));
+
+                        const dotP = dotProduct(d, refVec);
+                        const normP = norm(d) * norm(refVec);
+                        const angle = Math.acos(dotP / normP);
+                        const rad = (Math.sqrt(d.reduce((acc, val) => acc + val ** 2, 0))) * scaling_factor_circle;
+
+                        const innerRadius = Math.floor(rad / (intervalLen * scaling_factor_circle)) * intervalLen * scaling_factor_circle;
+                        const outerRadius = innerRadius + intervalLen * scaling_factor_circle;
+                        const num_outer_circle = outerRadius / (intervalLen * scaling_factor_circle);
+                        console.log(`Point is in circle ${num_outer_circle}`);
+
+                        console.log(`Point (${d}) at (${cx}, ${cy}) is between circles with radii ${innerRadius} and ${outerRadius}`);
+
+                        // Show tooltip with rounded coordinates, transformed coordinates, bin, and quadrant information
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`Coordinates: (${d.map(coord => coord.toFixed(2)).join(', ')})<br>Transformed Coords: (${cx.toFixed(2)}, ${cy.toFixed(2)})<br>Bin: ${i}-${j}`)
+                            .style("left", (event.pageX + 5) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function(d) {
+                        // Hide tooltip on mouseout
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    });
+
+              }
+          }
+
+          // Legend
+          const legend = svg.append("g")
+            .attr("class", "legend")
+            .attr("transform", "translate(20, 20)");
+
+            legend.selectAll(".legend-item")
+                .data(d3.range(bins.length))
+                .enter()
+                .append("g")
+                .attr("class", "legend-item")
+                .attr("transform", (d, i) => "translate(" + i * 70 + ",20)");
+
+            legend.selectAll(".legend-item")
+                .append("rect")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", 10)
+                .attr("height", 10)
+                .style("fill", d => colorScale(d));
+
+            legend.selectAll(".legend-item")
+                .append("text")
+                .attr("x", 20)
+                .attr("y", 5)
+                .attr("dy", ".35em")
+                .style("text-anchor", "start")
+                .text(d => `Bin ${d}`);
+
+      }
+
+
+      main(80);
+
+    </script>
+</body>
+</html>
