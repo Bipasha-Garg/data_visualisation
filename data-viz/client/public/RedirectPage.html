@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Our Visualisations</title>
+  <style>
+    body {
+      background-color: black;
+      color: #FFD700; /* Amber color */
+    }
+
+    .flex {
+      display: flex;
+    }
+
+    .items-center {
+      align-items: center;
+    }
+
+    .justify-center {
+      justify-content: center;
+    }
+
+    .min-h-screen {
+      min-height: 100vh;
+    }
+
+    .flex-col {
+      flex-direction: column;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .mb-4 {
+      margin-bottom: 1rem;
+    }
+
+    .text-5xl {
+      font-size: 3rem; /* Adjust as needed */
+    }
+
+    .font-serif {
+      font-family: serif;
+    }
+
+    .p-2 {
+      padding: 0.5rem;
+    }
+
+    .mr-4 {
+      margin-right: 1rem;
+    }
+
+    .bg-amber-400 {
+      background-color: #FFBF00; /* Amber color */
+    }
+
+    .text-black {
+      color: black;
+    }
+
+    .rounded {
+      border-radius: 0.25rem;
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+  <div class="flex-col text-center">
+    <h1 class="mb-4 text-5xl font-serif">Our Visualisations</h1>
+    <div class="p-2">
+      <button onclick="redirectToConeVis()" class="mr-4 bg-amber-400 text-black p-2 rounded">CROVHD</button>
+      <a href="/beads.html" class="mr-4 bg-amber-400 text-black p-2 rounded">Beads</a>
+      <a href="/heidi.html" class="mr-4 bg-amber-400 text-black p-2 rounded">Heidi</a>
+    </div>
+  </div>
+
+  <script>
+    function redirectToConeVis() {
+      window.location.href = "/ConeVis.html";
+    }
+  </script>
+</body>
+</html>

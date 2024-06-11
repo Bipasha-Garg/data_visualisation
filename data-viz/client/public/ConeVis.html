@@ -83,7 +83,7 @@
         </div>
     </div>
 
-    <svg width="3000" height="3000"></svg>
+    <svg width="10000" height="10000"></svg>
     <script>
       const tooltip = d3.select("body").append("div")
           .attr("class", "tooltip")
@@ -101,11 +101,11 @@
           });
       });
 
-      let currentZoomValue = 100; // Initial value
+      let currentZoomValue = 0.1; // Initial value
 
       function increase(){
-        if (currentZoomValue < 160){
-          currentZoomValue += 20;
+        if (currentZoomValue < 150){
+          currentZoomValue += 0.1;
           const checkbox = document.getElementById('checkbox1');
           if (checkbox.checked){
             main_scaled(currentZoomValue);
@@ -118,8 +118,8 @@
       }
 
       function decrease(){
-        if (currentZoomValue > 40){
-          currentZoomValue -= 20;
+        if (currentZoomValue > 0.1){
+          currentZoomValue -= 0.1;
           const checkbox = document.getElementById('checkbox1');
           if (checkbox.checked){
             main_scaled(currentZoomValue);
@@ -131,18 +131,50 @@
         console.log("click");
       }
 
+      // async function fetchData() {
+      //     const response = await fetch('Iris.csv'); // Update with your actual CSV file path or URL
+      //     console.log("response: ", response);
+      //     const data = await response.text();
+      //     console.log("data: ", data);
+      //     return data;
+      // }
+
       async function fetchData() {
-          const response = await fetch('Iris.csv'); // Update with your actual CSV file path or URL
-          const data = await response.text();
-          return data;
+          try {
+              // Read the string from filename.txt
+              const response = await fetch('filename.txt');
+              console.log("response: ", response);
+              const filename = await response.text();
+              console.log("filename: ", filename);
+
+              // Find the index of the last occurrence of "/uploads"
+              const lastIndex = filename.lastIndexOf('/');
+
+              // Replace everything before the last occurrence of "/uploads" with "."
+              const modifiedFilename = filename.slice(lastIndex + 1);
+              console.log("mod: ", modifiedFilename);
+              // Fetch data using the modified filename
+              const dataResponse = await fetch(modifiedFilename); // Update with your actual CSV file path or URL
+              const data = await dataResponse.text();
+              console.log("data: ", data);
+              return data;
+          } catch (error) {
+              console.error("Error fetching data:", error);
+              throw error;
+          }
       }
+
 
       function parseCSV(data) {
           const lines = data.split('\n').map(line => line.trim()).filter(line => line.length > 0);
           const headers = lines[0].split(',').map(header => header.trim());
           const dataRows = lines.slice(1);
 
-          const relevantColumns = headers.slice(1,5);
+          let relevantColumns = headers;
+          if (lines[0] == 'Id,SepalLengthCm,SepalWidthCm,PetalLengthCm,PetalWidthCm,Species'){
+            relevantColumns = headers.slice(1,5);
+            console.log("ITS IRIS");
+          }
           // const relevantColumns = ['SepalLengthCm', 'SepalWidthCm', 'PetalLengthCm', 'PetalWidthCm'];
           const indices = relevantColumns.map(col => headers.indexOf(col));
 
@@ -279,13 +311,17 @@
       async function main_scaled(scaling_factor_circle) {
         d3.select("svg").selectAll("*").remove(); // Clear the SVG
         // const scaling_factor_circle = 100;
-        const scaling_factor = scaling_factor_circle / 2.5;
+        const scaling_factor = scaling_factor_circle / 2;
 
         const csvData = await fetchData();
         const Data = parseCSV(csvData);
         console.log("Urgent: ", Data[0].length);
         const dimen = Data[0].length;
-        const intervalLen = 0.5; // Adjust this as needed
+
+        let intervalLen = 50; // Adjust this as needed
+        if (dimen == 4){
+          intervalLen = 0.5;
+        }
 
         const [tryBin, rmax] = classifyPoints(dimen, Data, intervalLen, 0);
         const extra = tryBin.length - findEmptyStartIndex(tryBin); // Adjust this as needed
@@ -365,7 +401,7 @@
         const minorAxisScalingFactor = 0.5; // Adjust this factor to reduce the minor axis length
 
         const coneMaxRadius = coneRadius * majorAxisScalingFactor;
-        const centerX = centerX_Circle + rmax * scaling_factor_circle + coneMaxRadius/2; // change here now
+        const centerX = centerX_Circle + rmax * scaling_factor_circle + coneMaxRadius; // change here now
         // console.log(centerY, "come", )
         let centerY = centerY_Circle + coneHeight/10;
         if (centerY < coneHeight / 2){
@@ -747,14 +783,17 @@
       async function main(scaling_factor_circle) {
         d3.select("svg").selectAll("*").remove(); // Clear the SVG
         // const scaling_factor_circle = 100;
-        const scaling_factor = scaling_factor_circle / 2.5;
+        const scaling_factor = scaling_factor_circle / 2;
 
         const csvData = await fetchData();
         const Data = parseCSV(csvData);
-        console.log("Urgent: ", Data[0].length);
-        const dimen = 4;
-        const intervalLen = 0.5; // Adjust this as needed
+        console.log("Urgent: ", Data[0]);
+        const dimen = Data[0].length;
 
+        let intervalLen = 50; // Adjust this as needed
+        if (dimen == 4){
+          intervalLen = 0.5;
+        }
         const [tryBin, rmax] = classifyPoints(dimen, Data, intervalLen, 0);
         const extra = tryBin.length - findEmptyStartIndex(tryBin); // Adjust this as needed
 
@@ -788,7 +827,7 @@
         const minorAxisScalingFactor = 0.5; // Adjust this factor to reduce the minor axis length
 
         const coneMaxRadius = coneRadius * majorAxisScalingFactor;
-        const centerX = centerX_Circle + rmax * scaling_factor_circle + coneMaxRadius/2; // change here now
+        const centerX = centerX_Circle + rmax * scaling_factor_circle + coneMaxRadius; // change here now
         // console.log(centerY, "come", )
         let centerY = centerY_Circle + coneHeight/10;
         if (centerY < coneHeight / 2){
@@ -1144,7 +1183,7 @@
       }
 
 
-      main(80);
+      main(0.1);
 
     </script>
 </body>
